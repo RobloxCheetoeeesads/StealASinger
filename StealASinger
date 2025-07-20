@@ -1,0 +1,441 @@
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local workspace = game:GetService("Workspace")
+
+local stealingAllEnabled = false
+local autoStealEnabled = false
+local savedPosition = nil
+local noclipEnabled = false
+
+local defaultHoldDuration = 3 -- default hold time for prompts
+
+local PlayerGui = player:WaitForChild("PlayerGui")
+
+-- ===== UI Setup =====
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "StealToggleGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = PlayerGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 280, 0, 430) -- will be resized later dynamically
+frame.Position = UDim2.new(0, 50, 0, 50)
+frame.BackgroundColor3 = Color3.fromRGB(20, 45, 90)
+frame.BorderSizePixel = 0
+frame.Parent = screenGui
+
+-- Beveled border effect using UIStroke & corner radius
+local stroke = Instance.new("UIStroke", frame)
+stroke.Thickness = 3
+stroke.Color = Color3.fromRGB(0, 170, 255)
+stroke.Transparency = 0.1
+
+local corner = Instance.new("UICorner", frame)
+corner.CornerRadius = UDim.new(0, 12)
+
+-- Header bar for dragging + title text
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 40)
+header.BackgroundColor3 = Color3.fromRGB(0, 110, 220)
+header.BorderSizePixel = 0
+header.Parent = frame
+
+local headerCorner = Instance.new("UICorner", header)
+headerCorner.CornerRadius = UDim.new(0, 12)
+
+local headerStroke = Instance.new("UIStroke", header)
+headerStroke.Thickness = 3
+headerStroke.Color = Color3.fromRGB(0, 170, 255)
+headerStroke.Transparency = 0
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -20, 1, 0)
+titleLabel.Position = UDim2.new(0, 10, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Steal a Singer Hacked"
+titleLabel.TextColor3 = Color3.fromRGB(230, 230, 255)
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 20
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = header
+
+-- Info Label
+local infoLabel = Instance.new("TextLabel")
+infoLabel.Size = UDim2.new(1, -20, 0, 25)
+infoLabel.Position = UDim2.new(0, 10, 0, 45)
+infoLabel.BackgroundTransparency = 1
+infoLabel.TextColor3 = Color3.fromRGB(190, 210, 255)
+infoLabel.Font = Enum.Font.Gotham
+infoLabel.TextSize = 16
+infoLabel.Text = "Saved Position: None"
+infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+infoLabel.Parent = frame
+
+-- Button creation helper (blue themed)
+local function createButton(name, text)
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(1, -20, 0, 40)
+    btn.BackgroundColor3 = Color3.fromRGB(10, 90, 180)
+    btn.BorderSizePixel = 0
+    btn.TextColor3 = Color3.fromRGB(230, 230, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 18
+    btn.Text = text
+    btn.AutoButtonColor = false
+
+    -- Hover effect
+    btn.MouseEnter:Connect(function()
+        btn.BackgroundColor3 = Color3.fromRGB(30, 130, 240)
+    end)
+    btn.MouseLeave:Connect(function()
+        btn.BackgroundColor3 = Color3.fromRGB(10, 90, 180)
+    end)
+
+    local btnCorner = Instance.new("UICorner", btn)
+    btnCorner.CornerRadius = UDim.new(0, 8)
+
+    local btnStroke = Instance.new("UIStroke", btn)
+    btnStroke.Thickness = 2
+    btnStroke.Color = Color3.fromRGB(0, 160, 255)
+    btnStroke.Transparency = 0.3
+
+    btn.Parent = frame
+    return btn
+end
+
+-- Section header creation helper
+local function createSectionLabel(text, posY)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -20, 0, 25)
+    label.Position = UDim2.new(0, 10, 0, posY)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(140, 200, 255)
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 18
+    label.Text = text
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = frame
+    return label
+end
+
+-- Create Buttons
+local stealAllToggle = createButton("StealAllToggle", "Steal All: OFF")
+local autoStealToggle = createButton("AutoStealToggle", "Auto Steal Helper: OFF")
+local noclipToggle = createButton("NoclipToggle", "Noclip: OFF")
+
+local savePosButton = createButton("SavePosButton", "Save Position")
+local teleportPosButton = createButton("TeleportPosButton", "Teleport To Position")
+
+local closeButton = createButton("CloseButton", "Close UI")
+local terminateButton = createButton("TerminateButton", "Terminate Script")
+
+-- Positioning buttons with sections:
+
+local yPos = 80 -- starting Y position after info label
+
+-- Cheats section
+createSectionLabel("-- Cheats --", yPos)
+yPos = yPos + 30
+
+stealAllToggle.Position = UDim2.new(0, 10, 0, yPos)
+yPos = yPos + 50
+
+autoStealToggle.Position = UDim2.new(0, 10, 0, yPos)
+yPos = yPos + 50
+
+noclipToggle.Position = UDim2.new(0, 10, 0, yPos)
+yPos = yPos + 50
+
+-- Teleports section
+createSectionLabel("-- Teleports --", yPos)
+yPos = yPos + 30
+
+savePosButton.Position = UDim2.new(0, 10, 0, yPos)
+yPos = yPos + 50
+
+teleportPosButton.Position = UDim2.new(0, 10, 0, yPos)
+yPos = yPos + 50
+
+-- Menu section
+createSectionLabel("-- Menu --", yPos)
+yPos = yPos + 30
+
+closeButton.Position = UDim2.new(0, 10, 0, yPos)
+yPos = yPos + 50
+
+terminateButton.Position = UDim2.new(0, 10, 0, yPos)
+yPos = yPos + 50
+
+-- Adjust frame height to fit content
+frame.Size = UDim2.new(0, 280, 0, yPos + 10)
+
+-- Make UI draggable by dragging header
+local dragging = false
+local dragInput, dragStart, startPos
+
+header.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+header.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- ===== Teleport helper =====
+local function teleportTo(cframe)
+    local char = player.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+        root.CFrame = cframe
+    end
+end
+
+-- ===== Steal All function =====
+local function stealAll()
+    if not stealingAllEnabled or not savedPosition then return end
+    local char = player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    for _, prompt in pairs(workspace:GetDescendants()) do
+        if not stealingAllEnabled then break end
+        if prompt:IsA("ProximityPrompt") and prompt.ActionText == "Steal Character" then
+            local targetModel = prompt.Parent
+            local targetRoot = targetModel and (targetModel:FindFirstChild("HumanoidRootPart") or targetModel:FindFirstChildWhichIsA("BasePart"))
+            if targetRoot then
+                local originalCFrame = root.CFrame
+
+                teleportTo(targetRoot.CFrame + Vector3.new(0, 3, 0))
+                task.wait(0.15)
+
+                prompt.HoldDuration = 0
+                prompt.Enabled = true
+                fireproximityprompt(prompt)
+                task.wait(0.5)
+
+                teleportTo(savedPosition + Vector3.new(0, 3, 0))
+                task.wait(0.5)
+
+                teleportTo(originalCFrame)
+                task.wait(0.5)
+            end
+        end
+    end
+end
+
+local stealAllLoop = task.spawn(function()
+    while true do
+        if stealingAllEnabled then
+            stealAll()
+        end
+        task.wait(1)
+    end
+end)
+
+-- ===== Auto Steal Helper: instant tap + teleport back =====
+local function onPromptTriggered(prompt, playerWhoTriggered)
+    if playerWhoTriggered ~= player then return end
+    if not autoStealEnabled then return end
+    if not savedPosition then return end
+
+    local char = player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+
+    local originalCFrame = root.CFrame
+
+    -- Delay before teleporting back to saved position (a bit slower)
+    task.delay(0.5, function()
+        teleportTo(savedPosition + Vector3.new(0, 3, 0))
+    end)
+    -- Teleport back to original position after another delay
+    task.delay(0.9, function()
+        teleportTo(originalCFrame)
+    end)
+end
+
+local function connectToPrompt(prompt)
+    if prompt:GetAttribute("ConnectedToTeleport") then return end
+    prompt.Triggered:Connect(function(playerWhoTriggered)
+        onPromptTriggered(prompt, playerWhoTriggered)
+    end)
+    prompt:SetAttribute("ConnectedToTeleport", true)
+end
+
+-- Connect to existing and future prompts
+for _, prompt in pairs(workspace:GetDescendants()) do
+    if prompt:IsA("ProximityPrompt") and prompt.ActionText == "Steal Character" then
+        connectToPrompt(prompt)
+    end
+end
+
+workspace.DescendantAdded:Connect(function(descendant)
+    if descendant:IsA("ProximityPrompt") and descendant.ActionText == "Steal Character" then
+        connectToPrompt(descendant)
+    end
+end)
+
+-- ===== Helper to set prompt hold duration =====
+local function setPromptsHoldDuration(duration)
+    for _, prompt in pairs(workspace:GetDescendants()) do
+        if prompt:IsA("ProximityPrompt") and prompt.ActionText == "Steal Character" then
+            prompt.HoldDuration = duration
+        end
+    end
+end
+
+-- ===== Button events =====
+
+stealAllToggle.MouseButton1Click:Connect(function()
+    stealingAllEnabled = not stealingAllEnabled
+    stealAllToggle.Text = stealingAllEnabled and "Steal All: ON" or "Steal All: OFF"
+    if stealingAllEnabled then
+        autoStealEnabled = false
+        autoStealToggle.Text = "Auto Steal Helper: OFF"
+        setPromptsHoldDuration(defaultHoldDuration)
+    end
+end)
+
+autoStealToggle.MouseButton1Click:Connect(function()
+    autoStealEnabled = not autoStealEnabled
+    autoStealToggle.Text = autoStealEnabled and "Auto Steal Helper: ON" or "Auto Steal Helper: OFF"
+    if autoStealEnabled then
+        stealingAllEnabled = false
+        stealAllToggle.Text = "Steal All: OFF"
+        setPromptsHoldDuration(0) -- instant tap
+    else
+        setPromptsHoldDuration(defaultHoldDuration)
+    end
+end)
+
+savePosButton.MouseButton1Click:Connect(function()
+    local char = player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if root then
+        savedPosition = root.CFrame
+        infoLabel.Text = "Saved Position: " .. tostring(math.floor(root.Position.X)) .. ", " .. tostring(math.floor(root.Position.Y)) .. ", " .. tostring(math.floor(root.Position.Z))
+    else
+        infoLabel.Text = "No character to save position!"
+    end
+end)
+
+teleportPosButton.MouseButton1Click:Connect(function()
+    if savedPosition then
+        teleportTo(savedPosition + Vector3.new(0, 3, 0))
+        infoLabel.Text = "Teleported to saved position."
+    else
+        infoLabel.Text = "No saved position to teleport to!"
+    end
+end)
+
+-- Noclip logic
+
+local function noclipStep()
+    if noclipEnabled then
+        local char = player.Character
+        if char then
+            for _, part in pairs(char:GetChildren()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end
+end
+
+local noclipConnection = RunService.Stepped:Connect(noclipStep)
+
+noclipToggle.MouseButton1Click:Connect(function()
+    noclipEnabled = not noclipEnabled
+    noclipToggle.Text = noclipEnabled and "Noclip: ON" or "Noclip: OFF"
+    if not noclipEnabled then
+        -- Restore collisions on character parts
+        local char = player.Character
+        if char then
+            for _, part in pairs(char:GetChildren()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
+            end
+        end
+    end
+end)
+
+-- Close button hides UI but leaves script running & shows open button on right side
+local openButton
+closeButton.MouseButton1Click:Connect(function()
+    frame.Visible = false
+    if not openButton then
+        openButton = Instance.new("TextButton")
+        openButton.Size = UDim2.new(0, 80, 0, 30)
+        openButton.Position = UDim2.new(1, -80, 0.5, -15) -- right side
+        openButton.BackgroundColor3 = Color3.fromRGB(0, 110, 220)
+        openButton.BorderSizePixel = 0
+        openButton.TextColor3 = Color3.fromRGB(230, 230, 255)
+        openButton.Font = Enum.Font.GothamBold
+        openButton.TextSize = 16
+        openButton.Text = "Open UI"
+        openButton.Parent = screenGui
+
+        local corner = Instance.new("UICorner", openButton)
+        corner.CornerRadius = UDim.new(0, 10)
+
+        openButton.MouseEnter:Connect(function()
+            openButton.BackgroundColor3 = Color3.fromRGB(30, 130, 240)
+        end)
+        openButton.MouseLeave:Connect(function()
+            openButton.BackgroundColor3 = Color3.fromRGB(0, 110, 220)
+        end)
+
+        openButton.MouseButton1Click:Connect(function()
+            frame.Visible = true
+            openButton:Destroy()
+            openButton = nil
+        end)
+    end
+end)
+
+-- Terminate button completely stops script & destroys UI
+terminateButton.MouseButton1Click:Connect(function()
+    stealingAllEnabled = false
+    autoStealEnabled = false
+    noclipEnabled = false
+    setPromptsHoldDuration(defaultHoldDuration)
+    if openButton then
+        openButton:Destroy()
+        openButton = nil
+    end
+    if noclipConnection then
+        noclipConnection:Disconnect()
+    end
+    screenGui:Destroy()
+end)
